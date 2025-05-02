@@ -1,0 +1,22 @@
+# .gitignore
+
+# Environment file - DO NOT COMMIT!
+.env
+
+# Binaries
+hammer
+*.exe
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Optional: IDE specific files
+# .vscode/
+# .idea/

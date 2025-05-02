@@ -1,0 +1,48 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  postgres: # Define a separate PostgreSQL service
+    image: postgres:12 # Use a specific Postgres version (e.g., 15)
+    ports:
+      - "5432:5432" # Expose Postgres port if needed for direct access (optional)
+    environment:
+      POSTGRES_USER: temporal # Define user for Temporal
+      POSTGRES_PASSWORD: temporal # Define password for Temporal
+      POSTGRES_DB: temporal # Define database name for Temporal persistence
+      # Add POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8 -T template0" # Optional: needed on some systems
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist Postgres data
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    ports:
+      - "7233:7233"
+    environment:
+      # --- Configure Temporal to use the external Postgres ---
+      - DB=postgres12
+      - DB_PORT=5432 # Standard Postgres port
+      - POSTGRES_USER=temporal # Must match user in postgres service
+      - POSTGRES_PWD=temporal # Must match password in postgres service
+      - POSTGRES_SEEDS=postgres # Point to the 'postgres' service name
+      - POSTGRES_DB=temporal # Optional depending on image version, but good to include
+      # --- End Postgres config ---
+    depends_on: # Ensure Postgres starts before Temporal
+      - postgres
+
+  temporal-ui: # NEW: Dedicated service for the Web UI
+    image: temporalio/ui:latest # Use the official UI image
+    ports:
+      - "8088:8080" # Map host port 8088 to UI container port 8080
+    environment:
+      # Tell the UI where the Temporal Frontend gRPC service is
+      - TEMPORAL_GRPC_ENDPOINT=temporal:7233
+      # Port the UI service should listen on inside the container
+      - TEMPORAL_UI_PORT=8080
+      # Optional: Set a default namespace for the UI to display on load
+      # - TEMPORAL_DEFAULT_NAMESPACE=default
+    depends_on: # Ensure Temporal server is available before UI starts
+      - temporal
+
+volumes:
+  postgres_data: {}
+  temporal_dynamic_config: {} # Define the volume if mounting local config
