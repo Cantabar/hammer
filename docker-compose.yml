@@ -2,6 +2,7 @@
 version: '3.8'
 services:
   postgres: # Define a separate PostgreSQL service
+    container_name: "hammer-postgres" 
     image: postgres:12 # Use a specific Postgres version (e.g., 15)
     ports:
       - "5432:5432" # Expose Postgres port if needed for direct access (optional)
@@ -12,8 +13,11 @@ services:
       # Add POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8 -T template0" # Optional: needed on some systems
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persist Postgres data
+    networks:
+      - temporal-network
 
   temporal:
+    container_name: "temporal"
     image: temporalio/auto-setup:latest
     ports:
       - "7233:7233"
@@ -26,14 +30,21 @@ services:
       - POSTGRES_SEEDS=postgres # Point to the 'postgres' service name
       - POSTGRES_DB=temporal # Optional depending on image version, but good to include
       # --- End Postgres config ---
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
     depends_on: # Ensure Postgres starts before Temporal
       - postgres
+    networks:
+      - temporal-network
 
-  temporal-ui: # NEW: Dedicated service for the Web UI
+  temporal-ui:
+    container_name: "temporal-ui"
     image: temporalio/ui:latest # Use the official UI image
     ports:
       - "8088:8080" # Map host port 8088 to UI container port 8080
     environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
       # Tell the UI where the Temporal Frontend gRPC service is
       - TEMPORAL_GRPC_ENDPOINT=temporal:7233
       # Port the UI service should listen on inside the container
@@ -42,6 +53,13 @@ services:
       # - TEMPORAL_DEFAULT_NAMESPACE=default
     depends_on: # Ensure Temporal server is available before UI starts
       - temporal
+    networks:
+      - temporal-network
+
+networks:
+  temporal-network:
+    driver: bridge
+    name: temporal-network
 
 volumes:
   postgres_data: {}
