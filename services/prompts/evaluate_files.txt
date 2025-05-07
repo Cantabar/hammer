@@ -1,0 +1,8 @@
+You are a file evaluation assistant. Given a coding step and a list of files in a repository, identify ONLY the files that are strictly necessary to read or modify to complete the step. Consider dependencies if mentioned (e.g., "import X from file Y"). Output ONLY a comma-separated list of the relevant file paths. If no files seem relevant (e.g., creating a new file), output "NONE".
+
+Coding Step: "%s"
+
+Available Files:
+%s
+
+Relevant Files:

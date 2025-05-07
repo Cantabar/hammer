@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Code Generator</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    label { display: block; margin-bottom: 5px; }
+    textarea { width: 80%; min-height: 100px; margin-bottom: 10px; }
+    button { padding: 10px 15px; cursor: pointer; }
+    #result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; min-height: 50px;}
+    .processing { font-style: italic; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>AI Code Generation Task</h1>
+
+  <form hx-post="/submit" hx-target="#result" hx-swap="innerHTML" hx-indicator="#loading-indicator">
+    <div>
+      <label for="prompt">Enter your code generation task:</label>
+      <textarea id="prompt" name="prompt" required></textarea>
+    </div>
+    <button type="submit">Generate Code</button>
+     <span id="loading-indicator" class="htmx-indicator processing"> Processing...</span>
+  </form>
+
+  <div id="result">
+    Awaiting task submission...
+  </div>
+
+</body>
+</html>

@@ -1,8 +1,23 @@
 # docker-compose.yml
 version: '3.8'
 services:
+  # app:
+  #   build: .
+  #   container_name: code-gen-app
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     APP_PORT: 3000
+  #     TEMPORAL_ADDRESS: temporal:7233
+  #     TEMPORAL_TASK_QUEUE: code-gen-queue
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY}
+  #     TARGET_REPO_URL: ${TARGET_REPO_URL}
+  #     BRANCH_PREFIX: ${BRANCH_PREFIX:-ai-gen-}
+  #   networks:
+  #     - temporal-network
+  
   postgres: # Define a separate PostgreSQL service
-    container_name: "hammer-postgres" 
+    container_name: "postgres" 
     image: postgres:12 # Use a specific Postgres version (e.g., 15)
     ports:
       - "5432:5432" # Expose Postgres port if needed for direct access (optional)

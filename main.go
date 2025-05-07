@@ -1,101 +1,124 @@
-// main.go
 package main
 
 import (
   "log"
   "net/http"
   "os"
-  "os/signal"
-  "syscall"
+  "time"
 
-  "github.com/joho/godotenv"
-
-  "hammer/db"
+  "hammer/activities"
   "hammer/handlers"
-  "hammer/temporal"
+  "hammer/services"
+  "hammer/workflows"
+
+  "github.com/go-chi/chi/v5"
+  "github.com/go-chi/chi/v5/middleware"
+  "github.com/joho/godotenv"
+  "go.temporal.io/sdk/client"
+  "go.temporal.io/sdk/worker"
+  "go.temporal.io/sdk/activity"
 )
 
-const port = ":8080"
-
 func main() {
-  err := godotenv.Load()
-  if err != nil {
-    log.Println("Info: .env file not found or error loading, using system environment variables.")
-  } else {
-    log.Println("Loaded environment variables from .env file.")
-  }
+	// Load Env Vars (.env takes precedence over system env)
+	 err := godotenv.Load()
+	 if err != nil {
+		 log.Println("No .env file found, using environment variables or defaults")
+	 }
 
-  log.Println("Starting Hammer application...")
-
-  // Initialize Database
-  sqlDB, err := db.InitDB()
-  if err != nil {
-    log.Fatalf("Failed to initialize database: %v", err)
-  }
-  defer func() {
-    if err := sqlDB.Close(); err != nil {
-        log.Printf("Error closing database: %v", err)
-    } else {
-        log.Println("Database connection closed.")
-    }
-  }()
+	 // Read necessary config (Temporal, OpenAI key)
+	 temporalAddr := os.Getenv("TEMPORAL_ADDRESS")
+	 if temporalAddr == "" { temporalAddr = "localhost:7233" }
+	 apiKey := os.Getenv("OPENAI_API_KEY")
+	 if apiKey == "" { log.Fatalln("OPENAI_API_KEY environment variable not set") }
+	 // Git creds are now read within the workflow via workflow.Getenv
+	 // gitUsername := os.Getenv("GIT_USERNAME")
+	 // gitPat := os.Getenv("GIT_PAT")
+	 // log.Printf("Git Username Loaded: %t", gitUsername != "") // Check if loaded
 
 
-  // Initialize Temporal Client
-  temporalClient, err := temporal.NewClient()
-  if err != nil {
-    log.Fatalf("Failed to create Temporal client: %v", err)
-  }
-  defer func() {
-      temporalClient.Close()
-      log.Println("Temporal client connection closed.")
-  }()
+	// Init Temporal Client
+	 temporalClient, err := client.Dial(client.Options{ HostPort: temporalAddr, Logger:   NewTemporalLogger(log.New(os.Stdout, "TEMPORAL_CLIENT: ", log.LstdFlags)), })
+	 if err != nil { log.Fatalf("Unable to create Temporal client: %v", err) }
+	 defer temporalClient.Close()
 
 
-  // Start Temporal Worker in a goroutine
-  // Pass the DB connection needed by activities
-  workerErrChan := make(chan error, 1) // Channel to receive error from worker goroutine
-  go func() {
-     workerErrChan <- temporal.StartWorker(temporalClient, sqlDB)
-  }()
+	// Init Services (LLM Service needed by activities)
+	 llmService := services.NewLLMService(apiKey)
 
 
-  // Initialize HTTP Handlers with dependencies
-  httpHandlers := handlers.NewHandler(temporalClient, sqlDB)
+	// Init Temporal Worker
+	 taskQueue := os.Getenv("TEMPORAL_TASK_QUEUE")
+	 if taskQueue == "" { taskQueue = "code-gen-queue" }
+	 w := worker.New(temporalClient, taskQueue, worker.Options{})
 
-  // Setup HTTP Server Routes
-  mux := http.NewServeMux() // Use NewServeMux for clarity
-  mux.HandleFunc("/", httpHandlers.RootHandler)
-  mux.HandleFunc("/submit-prompt", httpHandlers.SubmitHandler)
-  mux.HandleFunc("/get-result/", httpHandlers.GetResultHandler) // Note trailing slash
+	// Register Workflows
+	 w.RegisterWorkflow(workflows.CodeGenWorkflow)
 
-  // Start HTTP server
-  log.Printf("Starting HTTP server on http://localhost%s\n", port)
-  server := &http.Server{Addr: port, Handler: mux}
-  go func() {
-    if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-      log.Fatalf("HTTP server failed: %v", err)
-    }
-  }()
+	// Register Activities
+	 llmActivities := activities.NewLLMActivities(llmService)
+	 gitActivities := activities.NewGitActivities() // Holds state map
 
-  // Wait for termination signal or worker error
-  log.Println("Application started successfully. Press Ctrl+C to exit.")
-  sigChan := make(chan os.Signal, 1)
-  signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	 // LLM Activities
+	 w.RegisterActivityWithOptions(llmActivities.PlanStepsActivity, activity.RegisterOptions{Name: activities.ActivityName_PlanSteps})
+	 w.RegisterActivityWithOptions(llmActivities.EvaluateFilesActivity, activity.RegisterOptions{Name: activities.ActivityName_EvaluateFiles})
+	 w.RegisterActivityWithOptions(llmActivities.GenerateCodeActivity, activity.RegisterOptions{Name: activities.ActivityName_GenerateCode})
 
-  select {
-  case err := <-workerErrChan:
-      log.Printf("Temporal worker exited with error: %v", err)
-  case sig := <-sigChan:
-      log.Printf("Received signal %v, shutting down...", sig)
-  }
+	 // Git Activities
+	 w.RegisterActivityWithOptions(gitActivities.InitGitActivity, activity.RegisterOptions{Name: activities.ActivityName_InitGit})
+	 w.RegisterActivityWithOptions(gitActivities.CleanupGitActivity, activity.RegisterOptions{Name: activities.ActivityName_CleanupGit})
+	 w.RegisterActivityWithOptions(gitActivities.ListFilesGitActivity, activity.RegisterOptions{Name: activities.ActivityName_ListFilesGit})
+	 w.RegisterActivityWithOptions(gitActivities.ReadFilesGitActivity, activity.RegisterOptions{Name: activities.ActivityName_ReadFilesGit})
+	 w.RegisterActivityWithOptions(gitActivities.WriteFilesAndCommitActivity, activity.RegisterOptions{Name: activities.ActivityName_WriteFilesAndCommit})
+	 w.RegisterActivityWithOptions(gitActivities.CreateBranchActivity, activity.RegisterOptions{Name: activities.ActivityName_CreateBranch})
+	 w.RegisterActivityWithOptions(gitActivities.PushBranchActivity, activity.RegisterOptions{Name: activities.ActivityName_PushBranch})
 
-  // Graceful shutdown (optional for HTTP server, worker shutdown handled by its context)
-  // ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-  // defer cancel()
-  // if err := server.Shutdown(ctx); err != nil {
-  //    log.Printf("HTTP server shutdown error: %v", err)
-  //}
+	// Start Worker
+	 err = w.Start()
+	 if err != nil { log.Fatalf("Unable to start Temporal worker: %v", err) }
+	 defer w.Stop()
 
-  log.Println("Application shut down.")
+
+	// Init Router and Handlers
+	 r := chi.NewRouter()
+	 r.Use(middleware.Logger, middleware.Recoverer, middleware.Timeout(60*time.Second))
+	 pageHandler, err := handlers.NewPageHandler(temporalClient)
+	 if err != nil { log.Fatalf("Failed to create page handler: %v", err) }
+	 pageHandler.RegisterRoutes(r)
+
+
+	// Start HTTP Server
+	 port := os.Getenv("APP_PORT")
+	 if port == "" { port = "3000" }
+	 serverAddr := ":" + port
+	 log.Printf("Starting HTTP server on %s", serverAddr)
+	 if err := http.ListenAndServe(serverAddr, r); err != nil { log.Fatalf("HTTP server failed: %v", err) }
+}
+
+
+// --- Temporal Logger Adapter ---
+// Wraps Go's standard logger for Temporal SDK compatibility.
+
+type TemporalLogger struct {
+    logger *log.Logger
+}
+
+func NewTemporalLogger(l *log.Logger) *TemporalLogger {
+    return &TemporalLogger{logger: l}
+}
+
+func (l *TemporalLogger) Debug(msg string, keyvals ...interface{}) {
+    l.logger.Printf("DEBUG: %s %v\n", msg, keyvals)
+}
+
+func (l *TemporalLogger) Info(msg string, keyvals ...interface{}) {
+    l.logger.Printf("INFO: %s %v\n", msg, keyvals)
+}
+
+func (l *TemporalLogger) Warn(msg string, keyvals ...interface{}) {
+    l.logger.Printf("WARN: %s %v\n", msg, keyvals)
+}
+
+func (l *TemporalLogger) Error(msg string, keyvals ...interface{}) {
+    l.logger.Printf("ERROR: %s %v\n", msg, keyvals)
 }
