@@ -1,0 +1,33 @@
+# mprocs.yaml
+
+title: Hammer Dev
+
+procs:
+  # Process to tail logs for the PostgreSQL container
+  postgres_logs:
+    title: DB Logs (Postgres) # Title for the tab/pane
+    # Use 'docker compose' (v2) or 'docker-compose' (v1) depending on your setup
+    cmd: ["docker", "compose", "logs", "-f", "--tail=100", "postgres"]
+    autostart: true # Start this automatically when mprocs launches
+
+  # Process to tail logs for the main Temporal server container
+  temporal_logs:
+    title: Temporal Svr Logs
+    cmd: ["docker", "compose", "logs", "-f", "--tail=100", "temporal"]
+    autostart: true
+
+  # Process to tail logs for the Temporal UI container
+  temporal_ui_logs:
+    title: Temporal UI Logs
+    cmd: ["docker", "compose", "logs", "-f", "--tail=100", "temporal-ui"]
+    autostart: true
+
+  # Process to run the Go application
+  go_app:
+    title: Hammer App (Go)
+    # Ensure this command runs from your project root where main.go is
+    cmd: ["go", "run", "main.go"]
+    autostart: true
+    # Optional: Add environment variables if needed for the Go app
+    # env:
+    #   MY_ENV_VAR: "some_value"

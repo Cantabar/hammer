@@ -20,3 +20,6 @@ Thumbs.db
 # Optional: IDE specific files
 # .vscode/
 # .idea/
+
+# Error logs
+mprocs.log

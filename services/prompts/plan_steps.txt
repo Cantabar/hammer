@@ -1,0 +1,6 @@
+Given the following user request, break it down into a series of concrete, sequential steps for modifying a codebase. Each step should be a single action (e.g., "Create file X", "Add function Y to file Z", "Modify class A in file B"). Output ONLY a numbered list of steps, one per line.
+
+User Request: "%s"
+
+Steps:
+1.
