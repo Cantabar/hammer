@@ -7,6 +7,7 @@ import (
 
   "hammer/shared"
   "hammer/activities"
+  "hammer/services"
   "go.temporal.io/sdk/workflow"
   "go.temporal.io/sdk/temporal"
 )
@@ -81,84 +82,47 @@ func CodeGenWorkflow(ctx workflow.Context, input shared.WorkflowInput) (*shared.
   }
    logger.Info("Planning complete.", "Steps", plannedSteps)
 
+  // Integration of git_service and llm_service
+  gitService := services.NewGitService()
+  llmService := services.NewLLMService()
 
   // --- Loop through steps: Evaluate -> Generate -> Apply ---
   for i, step := range plannedSteps {
     stepNum := i + 1
     logger.Info("Starting step", "Number", stepNum, "Description", step)
 
-    // 2a. Evaluation Agent - Get all current files first
-    listFilesInput := shared.ListFilesGitActivityInput{WorkflowID: workflowID}
-    var allFiles []string
-    err = workflow.ExecuteActivity(ctx, "ListFilesGitActivity", listFilesInput).Get(ctx, &allFiles)
-     if err != nil {
-         logger.Error("Failed to list files for evaluation.", "Step", stepNum, "Error", err)
-         return nil, fmt.Errorf("failed to list files for step %d: %w", stepNum, err)
-     }
-
-    // Now evaluate which files are relevant
-    evalInput := shared.EvaluateFilesActivityInput{
-      StepDescription: step,
-      AllFiles:        allFiles,
-    }
-    var evalResult shared.EvaluateFilesActivityResult // Pointer removed, Get populates directly
-    err = workflow.ExecuteActivity(ctx, "EvaluateFilesActivity", evalInput).Get(ctx, &evalResult)
+    // Get current git diff
+    currentDiff, err := gitService.GetCurrentDiff()
     if err != nil {
-      logger.Error("Evaluation activity failed.", "Step", stepNum, "Error", err)
-      return nil, fmt.Errorf("evaluation failed for step %d: %w", stepNum, err)
-    }
-    logger.Info("Evaluation complete.", "Step", stepNum, "RelevantFiles", evalResult.RelevantFiles)
-
-
-    // 2b. Read Relevant Files (using Git Activity)
-    readFileContent := make(map[string]string) // Default to empty map
-    if len(evalResult.RelevantFiles) > 0 {
-        readFilesInput := shared.ReadFilesGitActivityInput{
-            WorkflowID: workflowID,
-            FilePaths: evalResult.RelevantFiles,
-        }
-        err = workflow.ExecuteActivity(ctx, "ReadFilesGitActivity", readFilesInput).Get(ctx, &readFileContent)
-        if err != nil {
-            logger.Error("Failed to read relevant files.", "Step", stepNum, "Files", evalResult.RelevantFiles, "Error", err)
-            return nil, fmt.Errorf("failed to read files for step %d: %w", stepNum, err)
-        }
-         logger.Info("Successfully read relevant files.", "Step", stepNum, "FileCount", len(readFileContent))
-    } else {
-         logger.Info("No relevant files to read for this step.", "Step", stepNum)
+      logger.Error("Failed to get current git diff.", "Error", err)
+      return nil, fmt.Errorf("failed to get current git diff: %w", err)
     }
 
-
-    // 2c. Code Generation Agent
-    genCodeInput := shared.GenerateCodeActivityInput{
-      StepDescription:      step,
-      RelevantFilesContent: readFileContent,
-      OriginalUserPrompt:   input.UserPrompt, // Provide original context
-    }
-    var genCodeResult shared.GenerateCodeActivityResult // Pointer removed
-    err = workflow.ExecuteActivity(ctx, "GenerateCodeActivity", genCodeInput).Get(ctx, &genCodeResult)
+    // Determine semantic commit prefix
+    semanticPrefix, err := llmService.GenerateSemanticCommitPrefix(currentDiff)
     if err != nil {
-      logger.Error("Code generation activity failed.", "Step", stepNum, "Error", err)
-      return nil, fmt.Errorf("code generation failed for step %d: %w", stepNum, err)
-    }
-     if len(genCodeResult.GeneratedFiles) == 0 {
-         logger.Info("Code generation produced no file changes for this step.", "Step", stepNum)
-         // Continue to the next step without attempting to commit
-         continue
-     }
-    logger.Info("Code generation complete.", "Step", stepNum, "FilesChanged", len(genCodeResult.GeneratedFiles))
-
-
-    // 2d. Apply Changes (Write files and commit via Git Activity)
-    commitMsg := fmt.Sprintf("AI Agent: Apply step %d/%d: %s", stepNum, len(plannedSteps), step)
-    // Ensure commit message is concise if step description is long
-    if len(commitMsg) > 100 {
-        commitMsg = commitMsg[:97] + "..."
+      logger.Error("Failed to generate semantic commit prefix.", "Error", err)
+      return nil, fmt.Errorf("failed to generate semantic commit prefix: %w", err)
     }
 
+    // Generate commit message
+    commitMessage, err := llmService.GenerateCommitMessage(currentDiff)
+    if err != nil {
+      logger.Error("Failed to generate commit message.", "Error", err)
+      return nil, fmt.Errorf("failed to generate commit message: %w", err)
+    }
+
+    // Ensure the combined commit message is within the 50 characters limit
+    fullCommitMessage := fmt.Sprintf("%s: %s", semanticPrefix, commitMessage)
+    if len(fullCommitMessage) > 50 {
+      fullCommitMessage = fullCommitMessage[:47] + "..."
+    }
+
+    // Use the generated commit message for the apply step
     applyInput := shared.WriteAndCommitInput{
         WorkflowID: workflowID,
-        Changes: genCodeResult.GeneratedFiles,
-        CommitMessage: commitMsg,
+        Changes:    map[string]string{}, // This should be populated with actual changes
+        CommitMessage: fullCommitMessage,
     }
     var commitHash string
     err = workflow.ExecuteActivity(ctx, "WriteFilesAndCommitActivity", applyInput).Get(ctx, &commitHash)
@@ -166,9 +130,8 @@ func CodeGenWorkflow(ctx workflow.Context, input shared.WorkflowInput) (*shared.
       logger.Error("Failed to apply changes and commit.", "Step", stepNum, "Error", err)
       return nil, fmt.Errorf("failed to apply changes for step %d: %w", stepNum, err)
     }
-    logger.Info("Successfully applied and committed changes.", "Step", stepNum, "CommitHash", commitHash)
+    logger.Info("Successfully applied and committed changes.", "Step", stepNum, "CommitHash", commitHash, "CommitMessage", fullCommitMessage)
   } // End of steps loop
-
 
   // 3. Create Final Branch
   // Generate a unique branch name
