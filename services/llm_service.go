@@ -1,13 +1,13 @@
+go
 package services
 
 import (
 	"context"
-	_ "embed" // Import the embed package (blank identifier is convention)
 	"fmt"
 	"log"
 	"strings"
 
-	openai "github.com/sashabaranov/go-openai" // Ensure correct import path
+	openai "github.com/sashabaranov/go-openai"
 )
 
 //go:embed prompts/plan_steps.txt
@@ -24,8 +24,6 @@ type LLMService struct {
 }
 
 func NewLLMService(apiKey string) *LLMService {
-	// You could potentially add validation here to ensure templates loaded correctly,
-	// though embed errors usually happen at compile time.
 	if planStepsPromptTemplate == "" || evaluateFilesPromptTemplate == "" || generateCodePromptTemplate == "" {
 		log.Fatal("LLM prompt templates failed to load. Check embed directives and file paths.")
 	}
@@ -34,15 +32,91 @@ func NewLLMService(apiKey string) *LLMService {
 	}
 }
 
+func (s *LLMService) GenerateCommitMessage(ctx context.Context, gitDiff string) (string, error) {
+	prompt := fmt.Sprintf("Given the following git diff:\n%s\nGenerate a concise commit message that summarizes the changes.", gitDiff)
+
+	resp, err := s.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4TurboPreview,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "You are an assistant that generates git commit messages.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+			MaxTokens:   60,
+			Temperature: 0.5,
+		},
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("openai commit message generation request failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 || resp.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("openai returned empty commit message response")
+	}
+
+	message := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if len(message) > 50 {
+		message = message[:47] + "..."
+	}
+
+	return message, nil
+}
+
+func (s *LLMService) GenerateSemanticCommitPrefix(ctx context.Context, gitDiff string) (string, error) {
+	prompt := fmt.Sprintf("Given the following git diff:\n%s\nDetermine the semantic commit prefix that best matches the changes. Options: chore, fix, feat, refactor, test.", gitDiff)
+
+	resp, err := s.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4TurboPreview,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "You are an assistant that determines semantic commit prefixes.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+			MaxTokens:   20,
+			Temperature: 0.5,
+		},
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("openai semantic prefix determination request failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 || resp.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("openai returned empty semantic prefix response")
+	}
+
+	prefix := strings.TrimSpace(resp.Choices[0].Message.Content)
+	validPrefixes := map[string]bool{"chore": true, "fix": true, "feat": true, "refactor": true, "test": true}
+	if !validPrefixes[prefix] {
+		return "", fmt.Errorf("invalid semantic prefix: %s", prefix)
+	}
+
+	return prefix, nil
+}
+
 // PlanSteps breaks down the user prompt into actionable steps.
 func (s *LLMService) PlanSteps(ctx context.Context, userPrompt string) ([]string, error) {
-	// Use the embedded template string
 	prompt := fmt.Sprintf(planStepsPromptTemplate, userPrompt)
 
 	resp, err := s.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
-			Model: openai.GPT4TurboPreview, // Or your preferred model
+			Model: openai.GPT4TurboPreview,
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
@@ -66,8 +140,7 @@ func (s *LLMService) PlanSteps(ctx context.Context, userPrompt string) ([]string
 		return nil, fmt.Errorf("openai returned empty planning response")
 	}
 
-	// Parsing logic remains the same
-	content := "1. " + resp.Choices[0].Message.Content // Add back the primed "1. "
+	content := "1. " + resp.Choices[0].Message.Content
 	rawSteps := strings.Split(strings.TrimSpace(content), "\n")
 	var steps []string
 	for _, step := range rawSteps {
@@ -91,7 +164,6 @@ func (s *LLMService) PlanSteps(ctx context.Context, userPrompt string) ([]string
 // EvaluateRelevantFiles determines which files are needed for a given step.
 func (s *LLMService) EvaluateRelevantFiles(ctx context.Context, step string, allFiles []string) ([]string, error) {
 	fileList := strings.Join(allFiles, "\n")
-	// Use the embedded template string
 	prompt := fmt.Sprintf(evaluateFilesPromptTemplate, step, fileList)
 
 	resp, err := s.client.CreateChatCompletion(
@@ -121,7 +193,6 @@ func (s *LLMService) EvaluateRelevantFiles(ctx context.Context, step string, all
 		return nil, fmt.Errorf("openai returned empty evaluation response")
 	}
 
-	// Parsing logic remains the same
 	content := strings.TrimSpace(resp.Choices[0].Message.Content)
 	log.Printf("LLM Evaluation Raw Response: %s", content)
 	if content == "NONE" || content == "" {
@@ -158,7 +229,6 @@ func (s *LLMService) GenerateCodeChanges(ctx context.Context, step string, relev
 		contextStr = "No existing files were deemed relevant. You might be creating a new file."
 	}
 
-	// Use the embedded template string
 	prompt := fmt.Sprintf(generateCodePromptTemplate, userPrompt, step, contextStr)
 
 	resp, err := s.client.CreateChatCompletion(
@@ -188,54 +258,7 @@ func (s *LLMService) GenerateCodeChanges(ctx context.Context, step string, relev
 		return nil, fmt.Errorf("openai returned empty code generation response")
 	}
 
-	// Parsing logic remains the same
 	rawOutput := resp.Choices[0].Message.Content
 	log.Printf("LLM Code Generation Raw Output:\n%s", rawOutput)
 	changes := make(map[string]string)
-	blocks := strings.Split(rawOutput, "---<<<EO>>>---")
-	for _, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" {
-			continue
-		}
-		parts := strings.SplitN(block, "CONTENT:", 2)
-		if len(parts) != 2 {
-			log.Printf("Warning: Could not parse FILENAME/CONTENT structure in block: %s", block)
-			continue
-		}
-		header := strings.TrimSpace(parts[0])
-		contentBlock := strings.TrimSpace(parts[1])
-		if !strings.HasPrefix(header, "FILENAME:") {
-			log.Printf("Warning: Block header does not start with FILENAME:: %s", header)
-			continue
-		}
-		filePath := strings.TrimSpace(strings.TrimPrefix(header, "FILENAME:"))
-		content := contentBlock
-		if strings.HasPrefix(contentBlock, "```") {
-			contentEnd := strings.LastIndex(contentBlock, "```")
-			if contentEnd > 0 {
-				firstNewline := strings.Index(contentBlock, "\n")
-				if firstNewline > 0 && firstNewline < contentEnd {
-					content = strings.TrimSpace(contentBlock[firstNewline+1 : contentEnd])
-				} else {
-					content = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(contentBlock, "```"), "```"))
-				}
-			} else {
-				log.Printf("Warning: Found opening ``` but no closing ``` for file %s. Using raw content.", filePath)
-				content = strings.TrimPrefix(contentBlock, "```")
-			}
-		}
-		if filePath != "" {
-			changes[filePath] = content
-			log.Printf("Parsed change for file: %s", filePath)
-		} else {
-			log.Printf("Warning: Parsed an empty file path from block: %s", block)
-		}
-	}
-	if len(changes) == 0 && rawOutput != "" {
-		log.Printf("Warning: LLM generated output but no files could be parsed. Raw Output: %s", rawOutput)
-	} else if len(changes) == 0 {
-		log.Println("LLM did not generate any file changes for this step.")
-	}
-	return changes, nil
-}
+	blocks := strings.Split(rawOutput, "
