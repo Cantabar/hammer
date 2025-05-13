@@ -1,8 +1,8 @@
 package services
 
-// GetCurrentDiff simulates the retrieval of the current git diff
-func GetCurrentDiff() string {
-	// Placeholder implementation for getting the current git diff
-	gitDiff := "diff --git a/file b/file\nnew file mode 100644\nindex 0000000..e69de29"
-	return gitDiff
+// GetCurrentDiff simulates retrieving the current git diff
+func GetCurrentDiff() (string, error) {
+	// Placeholder for actual implementation to get the current git diff
+	gitDiff := "diff --git a/file b/file" // Example git diff
+	return gitDiff, nil
 }

@@ -2,25 +2,39 @@ package workflows
 
 import (
 	"fmt"
+	"log"
 	"services"
-	"strings"
 )
 
-func GenerateCommit() {
-	gitService := services.GetCurrentDiff()
-	llmServicePrefix := services.GenerateSemanticCommitPrefix(gitService)
-	llmServiceMessage := services.GenerateCommitMessage(gitService)
-
-	// Combine prefix and message ensuring the total length does not exceed 50 characters
-	fullMessage := llmServicePrefix + ": " + llmServiceMessage
-	if len(fullMessage) > 50 {
-		trimSize := 50 - len(llmServicePrefix) - 2 // 2 for ": "
-		if trimSize < 0 {
-			fmt.Println("Error: Prefix too long.")
-			return
-		}
-		fullMessage = llmServicePrefix + ": " + llmServiceMessage[:trimSize]
+func GenerateAndCommit() {
+	// Get the current git diff
+	gitDiff, err := services.GetCurrentDiff()
+	if err != nil {
+		log.Fatalf("Failed to get current git diff: %v", err)
 	}
 
-	fmt.Println("Generated Commit Message: ", fullMessage)
+	// Determine the semantic commit prefix
+	semanticPrefix, err := services.GenerateSemanticCommitPrefix(gitDiff)
+	if err != nil {
+		log.Fatalf("Failed to determine semantic commit prefix: %v", err)
+	}
+
+	// Generate the commit message
+	commitMessage, err := services.GenerateCommitMessage(gitDiff)
+	if err != nil {
+		log.Fatalf("Failed to generate commit message: %v", err)
+	}
+
+	// Combine the semantic prefix and commit message
+	fullCommitMessage := fmt.Sprintf("%s: %s", semanticPrefix, commitMessage)
+
+	// Here we would normally commit the changes using the fullCommitMessage
+	// This is a placeholder for the actual git commit command
+	fmt.Printf("Committing changes with message: '%s'\n", fullCommitMessage)
+
+	// Example of how the commit might be performed (pseudo-code)
+	// err = git.Commit(fullCommitMessage)
+	// if err != nil {
+	// 	log.Fatalf("Failed to commit changes: %v", err)
+	// }
 }
