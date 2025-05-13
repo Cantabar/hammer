@@ -1,38 +1,30 @@
 package services
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 )
 
-// LLMService represents a service for interacting with a language model.
-type LLMService struct {
-	// Add fields if necessary
-}
+// GenerateCommitMessage generates a git commit message based on the provided git diff
+func GenerateCommitMessage(gitDiff string) string {
+	// Simulating a call to an agent to generate a commit message based on the git diff
+	// This is a placeholder implementation
+	commitMessage := "Updates detected in module" // Example generated message
 
-// NewLLMService creates a new instance of LLMService.
-func NewLLMService() *LLMService {
-	return &LLMService{}
-}
-
-// GenerateCommitMessage takes a git diff and uses an agent to generate a git commit message.
-func (s *LLMService) GenerateCommitMessage(gitDiff string) (string, error) {
-	// Imagine calling an agent here with gitDiff as input and returning a commit message.
-	// This is a placeholder for the actual implementation.
-	return "Implement logic to generate commit message based on git diff", nil
-}
-
-// GenerateSemanticCommitPrefix takes a git diff and determines the semantic prefix.
-func (s *LLMService) GenerateSemanticCommitPrefix(gitDiff string) (string, error) {
-	// This function should pass the git diff to an agent to determine the semantic prefix.
-	// For now, we'll just return a placeholder response.
-	// The actual implementation would involve analyzing the diff to decide between:
-	// chore, fix, feat, refactor, test
-
-	// Placeholder logic, replace with actual implementation
-	if errors.Is(errors.New("placeholder"), errors.New("placeholder")) {
-		return "feat", nil
+	// Ensure the commit message is under 50 characters
+	if len(commitMessage) > 50 {
+		commitMessage = commitMessage[:47] + "..."
 	}
 
-	return "fix", fmt.Errorf("failed to determine semantic prefix")
+	return commitMessage
+}
+
+// GenerateSemanticCommitPrefix determines the semantic commit prefix based on the provided git diff
+func GenerateSemanticCommitPrefix(gitDiff string) string {
+	// Simulating a call to an agent to determine the semantic commit prefix
+	// This is a placeholder implementation
+	prefixes := []string{"chore", "fix", "feat", "refactor", "test"}
+	selectedPrefix := prefixes[0] // Example: selecting "chore" as the prefix
+
+	return selectedPrefix
 }

@@ -1,21 +1,8 @@
 package services
 
-import (
-	"bytes"
-	"os/exec"
-)
-
-// GitService provides functionalities to interact with Git.
-type GitService struct{}
-
-// GetCurrentDiff returns the git diff of the current working branch.
-func (gs *GitService) GetCurrentDiff() (string, error) {
-	cmd := exec.Command("git", "diff")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-	return out.String(), nil
+// GetCurrentDiff simulates the retrieval of the current git diff
+func GetCurrentDiff() string {
+	// Placeholder implementation for getting the current git diff
+	gitDiff := "diff --git a/file b/file\nnew file mode 100644\nindex 0000000..e69de29"
+	return gitDiff
 }
