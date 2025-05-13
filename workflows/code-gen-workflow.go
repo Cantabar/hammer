@@ -27,24 +27,8 @@ func (w *CodeGenWorkflow) Execute() {
 		return
 	}
 
-	prefix, err := w.llmService.GenerateSemanticCommitPrefix(diff)
-	if err != nil {
-		fmt.Println("Error determining semantic commit prefix:", err)
-		return
-	}
+	fmt.Println("Current Git Diff:", diff)
 
-	message, err := w.llmService.GenerateCommitMessage(diff)
-	if err != nil {
-		fmt.Println("Error generating commit message:", err)
-		return
-	}
-
-	// Ensure the total commit message length does not exceed 50 characters
-	commitMessage := fmt.Sprintf("%s: %s", prefix, message)
-	if len(commitMessage) > 50 {
-		fmt.Println("Commit message exceeds 50 characters limit")
-		return
-	}
-
-	fmt.Println("Generated commit message:", commitMessage)
+	// Placeholder for further processing
+	// This will be replaced with actual implementation in subsequent steps
 }
