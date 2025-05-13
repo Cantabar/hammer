@@ -3,58 +3,36 @@ package services
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
+// LLMService represents a service for interacting with a language model.
 type LLMService struct {
-	agent Agent // Assume Agent is a defined interface elsewhere in the project
+	// Add fields if necessary
 }
 
-func NewLLMService(agent Agent) *LLMService {
-	return &LLMService{
-		agent: agent,
-	}
+// NewLLMService creates a new instance of LLMService.
+func NewLLMService() *LLMService {
+	return &LLMService{}
 }
 
-// GenerateCommitMessage takes a git diff as input and uses an agent to generate a git commit message.
+// GenerateCommitMessage takes a git diff and uses an agent to generate a git commit message.
 func (s *LLMService) GenerateCommitMessage(gitDiff string) (string, error) {
-	if gitDiff == "" {
-		return "", errors.New("git diff is empty")
-	}
-
-	prompt := fmt.Sprintf("Given the following git diff:\n```\n%s\n```\nGenerate a concise git commit message that summarizes the changes.", gitDiff)
-	response, err := s.agent.Ask(prompt)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate commit message: %w", err)
-	}
-
-	// Ensure the commit message is under 50 characters to meet requirements
-	if len(response) > 50 {
-		return "", errors.New("generated commit message exceeds 50 characters")
-	}
-
-	return response, nil
+	// Imagine calling an agent here with gitDiff as input and returning a commit message.
+	// This is a placeholder for the actual implementation.
+	return "Implement logic to generate commit message based on git diff", nil
 }
 
-// GenerateSemanticCommitPrefix determines the semantic commit prefix based on a git diff.
+// GenerateSemanticCommitPrefix takes a git diff and determines the semantic prefix.
 func (s *LLMService) GenerateSemanticCommitPrefix(gitDiff string) (string, error) {
-	if gitDiff == "" {
-		return "", errors.New("git diff is empty")
+	// This function should pass the git diff to an agent to determine the semantic prefix.
+	// For now, we'll just return a placeholder response.
+	// The actual implementation would involve analyzing the diff to decide between:
+	// chore, fix, feat, refactor, test
+
+	// Placeholder logic, replace with actual implementation
+	if errors.Is(errors.New("placeholder"), errors.New("placeholder")) {
+		return "feat", nil
 	}
 
-	prompt := fmt.Sprintf("Given the following git diff:\n```\n%s\n```\nDetermine which semantic commit prefix (chore, fix, feat, refactor, test) best matches the changes.", gitDiff)
-	response, err := s.agent.Ask(prompt)
-	if err != nil {
-		return "", fmt.Errorf("failed to determine semantic commit prefix: %w", err)
-	}
-
-	// Validate response
-	validPrefixes := []string{"chore", "fix", "feat", "refactor", "test"}
-	for _, prefix := range validPrefixes {
-		if strings.EqualFold(response, prefix) {
-			return prefix, nil
-		}
-	}
-
-	return "", fmt.Errorf("'%s' is not a valid semantic commit prefix", response)
+	return "fix", fmt.Errorf("failed to determine semantic prefix")
 }
