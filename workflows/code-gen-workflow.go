@@ -2,33 +2,39 @@ package workflows
 
 import (
 	"fmt"
-	"services" // Assuming services is the package where git_service.go and llm_service.go are located
+	"myapp/services"
 )
 
-// CodeGenWorkflow represents a workflow for generating code.
-type CodeGenWorkflow struct {
-	gitService  *services.GitService
-	llmService  *services.LLMService
-}
+// This function orchestrates the generation of a commit message
+// based on the current git diff.
+func GenerateCommitMessageWorkflow() (string, error) {
+	gitService := services.NewGitService()
+	llmService := services.NewLLMService()
 
-// NewCodeGenWorkflow creates a new instance of CodeGenWorkflow.
-func NewCodeGenWorkflow(gitService *services.GitService, llmService *services.LLMService) *CodeGenWorkflow {
-	return &CodeGenWorkflow{
-		gitService:  gitService,
-		llmService:  llmService,
-	}
-}
-
-// Execute runs the workflow to generate a commit message for each commit.
-func (w *CodeGenWorkflow) Execute() {
-	diff, err := w.gitService.GetCurrentDiff()
+	// Get current git diff
+	diff, err := gitService.GetCurrentDiff()
 	if err != nil {
-		fmt.Println("Error getting current diff:", err)
-		return
+		return "", fmt.Errorf("failed to get current git diff: %w", err)
 	}
 
-	fmt.Println("Current Git Diff:", diff)
+	// Generate semantic prefix
+	prefix, err := llmService.GenerateSemanticCommitPrefix(diff)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate semantic prefix: %w", err)
+	}
 
-	// Placeholder for further processing
-	// This will be replaced with actual implementation in subsequent steps
+	// Generate commit message
+	message, err := llmService.GenerateCommitMessage(diff)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate commit message: %w", err)
+	}
+
+	// Combine prefix and message to form the complete commit message
+	// Ensure the total length does not exceed 50 characters
+	completeMessage := fmt.Sprintf("%s: %s", prefix, message)
+	if len(completeMessage) > 50 {
+		return "", fmt.Errorf("commit message exceeds 50 characters")
+	}
+
+	return completeMessage, nil
 }
